@@ -1,0 +1,176 @@
+#if defined WIN32
+#include <winsock.h>
+#else
+#define closesocket close
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#endif
+#include <stdio.h>
+#include <string.h>
+
+#define BUFFSIZE 255
+#define PROTOPORT 48000
+#define HOSTNAME "passwdgen.uniba.it"
+
+void errorhandler(char* error_msg) {
+    printf("%s\n", error_msg);
+}
+
+void clearwinsock() {
+#if defined WIN32
+    WSACleanup();
+#endif
+}
+
+void menu() {
+    printf("Enter one of the following options:\n"
+           "n) numeric\n"
+           "a) alphanumeric\n"
+           "m) mixed\n"
+           "s) secure\n"
+           "u) unambiguous\n"
+           "h) help\n");
+}
+
+void helpMenu() {
+    printf("Password Generator Help Menu\nCommands:\n"
+           "h        : show this help menu\n"
+           "n LENGTH : generate numeric password (digits only)\n"
+           "a LENGTH : generate alphabetic password (lowercase letters)\n"
+           "m LENGTH : generate mixed password (lowercase letters and numbers)\n"
+           "s LENGTH : generate secure password (uppercase, lowercase, numbers, symbols)\n"
+           "u LENGTH : generate unambiguous secure password (no similar-looking characters)\n"
+           "q        : quit application\n\n"
+           "LENGTH must be between 6 and 32 characters\n\n"
+           "Ambiguous characters excluded in 'u' option:\n"
+           "0 O o (zero and letters O)\n"
+           "1 l I i (one and letters l, I)\n"
+           "2 Z z (two and letter Z)\n"
+           "5 S s (five and letter S)\n"
+           "8 B (eight and letter B)\n");
+}
+
+int msgValidate(const char* messaggio, char* error) {
+    char buffer[100];  // Container of the message that can be edited
+    char del[] = " ";  // Set of delimiters
+    strcpy(buffer, messaggio);
+    char* tipo = strtok(buffer, del);
+    char* len = strtok(NULL, del);
+    int lenNum;
+
+    if (*tipo == 'q') {
+        strcpy(error, "Exit from the menu...");
+        return 0;
+    }
+    if (*tipo == 'h') {
+        strcpy(error, "Opening help menu...");
+        helpMenu();
+        return 0;
+    }
+    if (len == NULL) {
+        strcpy(error, "String does not contain the space as required");
+        return 0;
+    }
+    if (*tipo == 'm' || *tipo == 'n' || *tipo == 's' || *tipo == 'a' || *tipo == 'u') {
+        if ((lenNum = atoi(len)) != 0) {
+            if (lenNum >= 6 && lenNum <= 32) return 1;
+            else {
+                strcpy(error, "The length entered is outside the allowed range");
+                return 0;
+            }
+        } else {
+            strcpy(error, "You did not enter a number after the space");
+            return 0;
+        }
+    }
+    strcpy(error, "The type of password entered is not allowed");
+    return 0;
+}
+
+int main() {
+#if defined WIN32
+    WSADATA wsadata;
+    int iResult = WSAStartup(MAKEWORD(2, 2), &wsadata);
+    if (iResult != 0) {
+        printf("Error at WSAStartup\n");
+        return EXIT_FAILURE;
+    }
+#endif
+
+    int sock;
+    struct sockaddr_in s_Addr, from_Addr;
+    int fromSize;
+    struct hostent* host;
+    char buffer[BUFFSIZE];
+
+    // Hostname resolution
+    if ((host = gethostbyname(HOSTNAME)) == NULL) {
+        errorhandler("Name resolution error");
+        return EXIT_FAILURE;
+    }
+
+    // Socket creation
+    if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+        errorhandler("socket() failed");
+        clearwinsock();
+        return EXIT_FAILURE;
+    }
+
+    // Set socket timeout
+    struct timeval timeout;
+    timeout.tv_sec = 5;  // Timeout di 5 secondi
+    timeout.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+
+    // Server address creation
+    memset(&s_Addr, 0, sizeof(s_Addr));
+    s_Addr.sin_family = AF_INET;
+    s_Addr.sin_port = htons(PROTOPORT);
+    memcpy(&s_Addr.sin_addr.s_addr, host->h_addr_list[0], host->h_length);  // Hostname resolved in IP address
+
+    // Input string
+    char input[10];
+    do {
+        menu();
+        char errorstring[50];
+        printf("\nChoose the message:\n");
+        fgets(input, sizeof(input), stdin);
+        input[strcspn(input, "\n")] = '\0';  // Remove trailing newline
+
+        if (msgValidate(input, errorstring)) {
+            printf("Correct insertion...\n");
+
+            // Sending the message to the server
+            int msgLength = strlen(input);
+            if (sendto(sock, input, msgLength, 0, (struct sockaddr*)&s_Addr, sizeof(s_Addr)) != msgLength) {
+                errorhandler("sendto() sent a different number of bytes than expected");
+                break;
+            }
+            printf("Message sent correctly to the server...\n");
+
+            // Receive the password
+            fromSize = sizeof(from_Addr);
+            int receivedBytes = recvfrom(sock, buffer, BUFFSIZE - 1, 0, (struct sockaddr*)&from_Addr, &fromSize);
+
+            if (receivedBytes < 0) {
+                errorhandler("recvfrom() failed or timeout occurred");
+                break;
+            }
+
+            buffer[receivedBytes] = '\0';  // Null-terminate the string
+            if (s_Addr.sin_addr.s_addr != from_Addr.sin_addr.s_addr) {
+                fprintf(stderr, "Error: Received a packet from an unknown source.\n");
+                exit(EXIT_FAILURE);
+            }
+            printf("Received Password from Server: %s\n", buffer);
+
+        } else {
+            printf("%s...\n\n", errorstring);
+        }
+    } while (input[0] != 'q');
+
+    closesocket(sock);
+    clearwinsock();
+    return EXIT_SUCCESS;
+}

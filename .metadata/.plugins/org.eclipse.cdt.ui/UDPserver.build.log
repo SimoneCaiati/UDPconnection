@@ -1,0 +1,7 @@
+12:30:22 **** Rebuild of configuration Debug for project UDPserver ****
+Info: Internal Builder is used for build
+gcc "-IC:\\Users\\simon\\OneDrive\\Desktop\\UDPconnection\\library\\src" -O0 -g3 -Wall -c -fmessage-length=0 -o "src\\Server.o" "..\\src\\Server.c" 
+gcc "-LC:\\Users\\simon\\OneDrive\\Desktop\\UDPconnection\\library\\Debug" -o UDPserver.exe "src\\Server.o" -llibrary -lwsock32 
+
+12:30:22 Build Finished. 0 errors, 0 warnings. (took 622ms)
+

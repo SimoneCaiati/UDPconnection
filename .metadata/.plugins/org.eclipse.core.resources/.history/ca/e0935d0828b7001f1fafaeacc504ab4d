@@ -1,0 +1,57 @@
+#if defined WIN32
+#include <winsock.h>
+#else
+#define closesocket close
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#endif
+#include <stdio.h>
+#include <string.h>
+
+#define BUFFSIZE 255
+#define PROTOPORT 48000
+
+void errorhandler(char* error_msg){
+	printf(error_msg);
+}
+
+void clearwinsock(){
+#if defined WIN32
+	WSACleanup();
+#endif
+}
+int main(){
+#if defined WIN32
+	WSADATA wsadata;
+	int iResult = WSAStartup(MAKEWORD(2,2),&wsadata);
+	if(iResult !=0){
+		printf("error at WSAStartup\n");
+		return EXIT_FAILURE;
+	}
+#endif
+
+	int s_sock;
+	struct sockaddr_in s_Addr;
+	struct sockaddr_in c_Addr;
+	int c_AddrLen;
+	char buffer[BUFFSIZE];
+
+	//SOCKET CREATION
+	if ((s_sock= socket(PF_INET,SOCK_DGRAM,IPPROTO_UDP))<0)
+		errorhandler("socket() failed");
+
+	//SERVER ADDRESS CREATION
+	memset(&s_Addr,0,sizeof(s_Addr));
+	s_Addr.sin_family=AF_INET;
+	s_Addr.sin_port=htons(PROTOPORT);
+	s_Addr.sin_addr.s_addr= gethostbyname("passwdgen.uniba.it");
+
+	//ADDRESS BIND
+	if((bind(s_sock,(struct sockaddr*)&s_Addr,sizeof(s_Addr)))<0)
+		errorhandler("bind() error");
+	printf("BIND SUCCESS...\n");
+
+
+	return 0;
+}

@@ -1,0 +1,87 @@
+#if defined WIN32
+#include <winsock.h>
+#else
+#define closesocket close
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <netdb.h>
+#endif
+#include <stdio.h>
+#include <string.h>
+
+#define BUFFSIZE 255
+#define PROTOPORT 48000
+#define HOSTNAME "passwdgen.uniba.it"
+
+void errorhandler(char* error_msg){
+	printf(error_msg);
+}
+
+void clearwinsock(){
+#if defined WIN32
+	WSACleanup();
+#endif
+}
+int main(){
+#if defined WIN32
+	WSADATA wsadata;
+	int iResult = WSAStartup(MAKEWORD(2,2),&wsadata);
+	if(iResult !=0){
+		printf("error at WSAStartup\n");
+		return EXIT_FAILURE;
+	}
+#endif
+
+	int s_sock;
+	struct sockaddr_in s_Addr, c_Addr;
+	int c_AddrLen;
+	char buffer[BUFFSIZE];
+	struct hostent *host;
+	int recvMsgSize;
+
+	//HOSTNAME RESOLUTION
+	if((host=gethostbyname(HOSTNAME))==NULL){
+		errorhandler("Name resolution error\n");
+		return EXIT_FAILURE;
+	}
+
+	//SOCKET CREATION
+	if ((s_sock= socket(PF_INET,SOCK_DGRAM,IPPROTO_UDP))<0){
+		errorhandler("socket() failed");
+		clearwinsock(s_sock);
+		return EXIT_FAILURE;
+	}
+
+	//SERVER ADDRESS CREATION
+	memset(&s_Addr,0,sizeof(s_Addr));
+	s_Addr.sin_family=AF_INET;
+	s_Addr.sin_port=htons(PROTOPORT);
+	memcpy(&s_Addr.sin_addr.s_addr, host->h_addr_list[0], host->h_length);  // hostname resolved in IP address
+
+
+	//ADDRESS BIND
+	if((bind(s_sock,(struct sockaddr*)&s_Addr,sizeof(s_Addr)))<0){
+		errorhandler("bind() error");
+		clearwinsock(s_sock);
+		close(s_sock);
+		return EXIT_FAILURE;
+	}
+	printf("Server listening on %s, port %d...\n", HOSTNAME, PROTOPORT);
+
+	//INFINITE LOOP OF READING AND WRITING
+	while(1){
+		c_AddrLen= sizeof(c_Addr);
+		if((recvMsgSize= recvfrom(s_sock,buffer,BUFFSIZE,0,(struct sockaddr*)&c_Addr,c_AddrLen))<0){
+			errorhandler("recvfrom() failed\n");
+			closesocket(s_sock);
+		    clearwinsock();
+			return 0;
+		}
+		printf("New Request from:%s:%d\n",inet_ntoa(s_Addr.sin_addr),PROTOPORT);
+	}
+
+
+
+	return 0;
+}

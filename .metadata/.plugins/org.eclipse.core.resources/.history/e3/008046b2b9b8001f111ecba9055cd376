@@ -1,0 +1,148 @@
+#if defined WIN32
+#include <winsock.h>
+#else
+#define closesocket close
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#endif
+#include <stdio.h>
+#include <string.h>
+
+#define BUFFSIZE 255
+#define PROTOPORT 48000
+#define HOSTNAME "passwdgen.uniba.it"
+
+void errorhandler(char* error_msg){
+	printf(error_msg);
+}
+
+void clearwinsock(){
+#if defined WIN32
+	WSACleanup();
+#endif
+}
+
+void menu(){
+	printf("\n\n"
+			"enter one of the following options:\n"
+			"n) numeric\n"
+			"a) alphanumeric\n"
+			"m) mixed\n"
+			"s) secure\n"
+			"u) unambiguous\n"
+			"h) help");
+}
+
+void helpMenu(){
+	printf( "Password Generator Help Menu\nCommands:"
+			"h        : show this help menu\n"
+			"n LENGTH : generate numeric password (digits only)\n"
+			"a LENGTH : generate alphabetic password (lowercase letters)\n"
+			"m LENGTH : generate mixed password (lowercase letters and numbers)\n"
+			"s LENGTH : generate secure password (uppercase, lowercase, numbers, symbols)\n"
+			"u LENGTH : generate unambiguous secure password (no similar-looking characters)\n"
+			"q        : quit application\n\n"
+			"LENGTH must be between 6 and 32 characters\n\n"
+			"Ambiguous characters excluded in 'u' option:\n"
+			"0 O o (zero and letters O)\n"
+			"1 l I i (one and letters l, I)\n"
+			"2 Z z (two and letter Z)\n"
+			"5 S s (five and letter S)\n"
+			"8 B (eight and letter B)\n");
+}
+
+int msgValidate(const char* messaggio, char* error) {
+    char buffer[100]; 		//container of the message that can be edited
+    char del[] = " ";		//set of delimiters
+    strcpy(buffer, messaggio);
+    char* tipo = strtok(buffer, del);
+    char* len = strtok(NULL, del);
+    int lenNum;
+
+    if(*tipo=='q'){
+        	strcpy(error, "exit from the menu...");
+        	return 0;
+        }
+    if(*tipo=='h'){
+            	strcpy(error, "opening helping menu...");
+            	return 0;
+            }
+    if (len == NULL) {
+    	strcpy(error, "string does not contain the space as required");
+    	return 0;
+    }
+    if (*tipo == 'm' || *tipo == 'n' || *tipo == 's' || *tipo == 'a') {
+       if ((lenNum = atoi(len)) != 0) {
+           if (lenNum >= 6 && lenNum <= MAXPSW)
+                return 1;
+           else {
+                 strcpy(error, "the length entered is outside the allowed range");
+                 return 0;
+           }
+       } else {
+              strcpy(error, "you did not enter a number after the space");
+              return 0;
+       }
+    }
+    strcpy(error, "the type of password entered is not allowed");
+    return 0;
+}
+
+
+int main(){
+#if defined WIN32
+	WSADATA wsadata;
+	int iResult = WSAStartup(MAKEWORD(2,2),&wsadata);
+	if(iResult !=0){
+		printf("error at WSAStartup\n");
+		return EXIT_FAILURE;
+	}
+#endif
+
+	int sock;
+	struct sockaddr_in s_Addr, c_Addr;
+	int c_size;
+	struct hostent *host;
+	char buffer[BUFFSIZE];
+
+	//HOSTNAME RESOLUTION
+    if((host=gethostbyname(HOSTNAME))==NULL){
+    	errorhandler("Name resolution error\n");
+		return EXIT_FAILURE;
+	}
+
+    //SOCKET CREATION
+    if ((sock= socket(PF_INET,SOCK_DGRAM,IPPROTO_UDP))<0){
+    	errorhandler("socket() failed");
+    	clearwinsock(sock);
+    	return EXIT_FAILURE;
+    }
+    //SERVER ADDRESS CREATION
+    memset(&s_Addr,0,sizeof(s_Addr));
+    s_Addr.sin_family=AF_INET;
+    s_Addr.sin_port=htons(PROTOPORT);
+    memcpy(&s_Addr.sin_addr.s_addr, host->h_addr_list[0], host->h_length);  // hostname resolved in IP address
+
+    //INPUT STRING
+    char input[10];
+    do{
+    	menu();
+    	char errorstring[50];
+    	printf("\nchoose the message:\n");
+    	fgets(input,9,stdin);
+    	if(msgValidate(input,errorstring))
+    	{
+    		printf("correct insertion...\n");
+   			//SENDING THE MESSAGE TO THE SERVER
+   			//if(send(c_socket,input,sizeof(input),0)<0){
+   				//errorhandler("sending the message failed\n");
+   				//break;
+    		//}
+    	//else printf("message sent correctly to the server...\n");
+   		}
+   		else printf("%s...\n\n",errorstring);
+    	}while(input[0]!='q');
+
+	return 0;
+}
